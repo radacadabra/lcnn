@@ -1,6 +1,6 @@
 /data
 /logs
-/models
+/trained_models
 /post
 .idea
 *.pyc
