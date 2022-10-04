@@ -16,6 +16,7 @@ Options:
 
 #python image_alignment.py -d 0 config/wireframe.yaml trained_models/pretrained.pth.tar "data/unimelb_corridor/pairs_clear_notexture/r001.png" "data/unimelb_corridor/pairs_clear_notexture/s001.png" 
 
+from calendar import different_locale
 from operator import index
 import os
 import os.path as osp
@@ -145,31 +146,75 @@ def main():
             c = np.linalg.norm(P3 - P2)
             return math.acos((a**2 + b**2 - c**2)/(2*a*b))
 
+        def directional_angle(A, B):
+            y_a = A[0]
+            x_a = A[1]
+            y_b = B[0]
+            x_b = B[1]
+
+            print(f"A: {A}")
+            print(f"B: {B}")
+
+            delta_y = y_b - y_a
+            delta_x = x_b - x_a
+
+            print(f"delta_y: {delta_y}")
+            print(f"delta_x: {delta_x}")
+
+            if (delta_x < 0):
+                return math.atan(delta_y/delta_x) + math.pi
+            elif (delta_y < 0):
+                return math.atan(delta_y/delta_x) + 2*math.pi
+            else:
+                return math.atan(delta_y/delta_x)
+
+
+        def angle_from_directionals(P1, P2,P3):
+            ni_P1_P2 = directional_angle(P1, P2)
+            ni_P1_P3 = directional_angle(P1, P3)
+            print(f"ni_P1_P2: {ni_P1_P2}")
+            print(f"ni_P1_P3: {ni_P1_P3}")
+
+            if (ni_P1_P3 > ni_P1_P2):
+                return (ni_P1_P3 - ni_P1_P2)
+            else:
+                return (2*math.pi - (ni_P1_P2 - ni_P1_P3))
+
         #parameters
         if (image_index == 0):
             thr_conf = 0.98
+            thr_conf_rgb = thr_conf
         else:
-            thr_conf = 0.99
+            thr_conf = 0.98
+            thr_conf_synt = thr_conf
 
-        eucl_thr = 0.15
+        eucl_thr = 0.10
 
         thr_dist = 1
 
         normalisation = True
 
-        n = np.sum(nscores > thr_conf)
+        #n = np.sum(nscores > thr_conf)
 
-        pointsA = np.empty((n, 2))
-        pointsB = np.empty((n, 2))
+        pointsA = np.empty((0, 2))
+        pointsB = np.empty((0, 2))
 
         j = 0
         for i in range(0, len(nscores)):
             if nscores[i] > thr_conf:
-                pointsA[j] = nlines[i, 0]
-                pointsB[j] = nlines[i, 1]
-                j += 1
 
-        middle = np.empty((n))
+                print(np.linalg.norm(nlines[i, 0] - nlines[i, 1]))
+                
+                if (np.linalg.norm(nlines[i, 0] - nlines[i, 1]) > 3):
+                    pointsA = np.append(pointsA, np.expand_dims(nlines[i, 0], axis = 0), axis = 0)
+                    pointsB = np.append(pointsB, np.expand_dims(nlines[i, 1], axis = 0), axis = 0)
+                    #pointsA[j] = nlines[i, 0]
+                    #pointsB[j] = nlines[i, 1]
+                    j += 1
+
+                    print(f"Line {j}, nscore {nscores[i]} \nPoint A: {nlines[i, 0]}, Point B: {nlines[i, 1]}")
+
+        middle = np.empty((j))
 
         tri_descriptor = np.empty((0, 4))
         tri_lines = np.empty((0, 4, 2))
@@ -204,12 +249,18 @@ def main():
                 middle[i] = True
 
                 for m in range(0, len(tiesK_A)):
-                    d1 = angle_LoC(tiesK_A[m], tiesK_B[m], tiesL_A[0])
+                    print(f"m: {m}")
+                    #d1 = angle_LoC(tiesK_A[m], tiesL_A[0], tiesK_B[m])
+                    d1 = angle_from_directionals(tiesK_A[m], tiesL_A[0], tiesK_B[m])
+                    print(f"d1: {d1}")
 
                     d3 = np.linalg.norm(tiesK_A[m] - tiesL_A[0])/np.linalg.norm(tiesK_A[m] - tiesK_B[m])
 
                     for n in range(0, len(tiesL_A)):
-                        d2 = angle_LoC(tiesL_A[n], tiesK_A[0], tiesL_B[n])
+                        print(f"n: {n}")
+                        #d2 = angle_LoC(tiesL_A[n], tiesK_A[0], tiesL_B[n])
+                        d2 = angle_from_directionals(tiesL_A[n], tiesK_A[0], tiesL_B[n])
+                        print(f"d2: {d2}")
 
                         d4 = np.linalg.norm(tiesL_A[n] - tiesK_A[0])/np.linalg.norm(tiesL_A[n] - tiesL_B[n])
 
@@ -228,10 +279,6 @@ def main():
             #     print(tiesL_A)
             #     print("tiesL_B:")
             #     print(tiesL_B)
-
-        if normalisation:
-            d3_d4_max = tri_descriptor[:, [2, 3]].max()
-            tri_descriptor = tri_descriptor / np.array([math.pi, math.pi, d3_d4_max, d3_d4_max])
 
         print(middle)
 
@@ -271,8 +318,8 @@ def main():
         axs[image_index].axis('off')
 
         if (image_index==1):
-            plt.savefig(os.path.join(dir_path, f"line_segments_{imname1}_{imname2}.png"), bbox_inches='tight', dpi=300)
-            #plt.show()
+            plt.savefig(os.path.join(dir_path, f"line_segments_{imname1}_{imname2}_{thr_conf_rgb}_{thr_conf_synt}_{eucl_thr}.png"), bbox_inches='tight', dpi=300)
+            plt.show()
             plt.close()
 
         image_index = image_index + 1
@@ -280,32 +327,42 @@ def main():
     #tri_descriptor_one = np.loadtxt(os.path.join(dir_path, f"tri_descriptors_{imname1}.txt"), delimiter = ' ')
     #tri_descriptor_two = np.loadtxt(os.path.join(dir_path, f"tri_descriptors_{imname1}.txt"), delimiter = ' ')
 
-    descriptor_match_indices = np.empty((0,2))
+    if normalisation:
+        d3_d4_max = np.maximum(tri_descriptor_one[:, [2, 3]].max(), tri_descriptor_two[:, [2, 3]].max())
+        tri_descriptor_one = tri_descriptor_one / np.array([2*math.pi, 2*math.pi, d3_d4_max, d3_d4_max])
+        tri_descriptor_two = tri_descriptor_two / np.array([2*math.pi, 2*math.pi, d3_d4_max, d3_d4_max])
+
+    descriptor_match_indices = np.empty((0,3))
 
     n_matches = 0
 
     for i in range(0, len(tri_descriptor_one)):
         for j in range(0, len(tri_descriptor_two)):
-            if np.linalg.norm(tri_descriptor_one[i] - tri_descriptor_two[j]) < eucl_thr:
+            d = np.linalg.norm(tri_descriptor_one[i] - tri_descriptor_two[j])
+            if d < eucl_thr:
                 n_matches += 1
-                descriptor_match_indices = np.append(descriptor_match_indices, [[i, j]], axis = 0)
-                print(f"Descriptor match! RGB {i+1} and synthetic {j+1}")
+                descriptor_match_indices = np.append(descriptor_match_indices, [[i, j, d]], axis = 0)
+                print(f"Descriptor match! RGB {i+1} and synthetic {j+1} with distance of {d}")
 
     
     print(f"Total number of descriptor matches: {n_matches}\n")
 
     if (n_matches != 0):
         print("Descriptor matches:")
-        print(descriptor_match_indices)
+        print(descriptor_match_indices + [1, 1, 0])
 
         matched_descriptors = np.empty((0,5))
 
-        fig_m, ax = plt.subplots(n_matches, 2)
-        fig_m.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
-        plt.margins(0,0)
+        matches_path = os.path.join(dir_path, f"tri_line_matches_{imname1}_{imname2}_{thr_conf_rgb}_{thr_conf_synt}_{eucl_thr}")
+        if not os.path.exists(matches_path):
+            os.mkdir(matches_path)
 
-        if (n_matches == 1):
-            (in1, in2) = descriptor_match_indices[0]
+        for k in range(0, n_matches, 1):
+            fig_m, ax = plt.subplots(1, 2)
+            fig_m.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+            plt.margins(0,0)
+
+            (in1, in2, e_d) = descriptor_match_indices[k]
             in1 = int(in1)
             in2 = int(in2)
 
@@ -321,7 +378,7 @@ def main():
 
             ax[0].imshow(im1)
             ax[0].axis('off')
-            ax[0].set_title(f"RGB {imname1}, triline {in1 + 1}")
+            ax[0].set_title(f"RGB triline {in1 + 1}")
 
             (po1, po2, po3, po4) = tri_lines_2[in2]
 
@@ -335,68 +392,139 @@ def main():
 
             ax[1].imshow(im2)
             ax[1].axis('off')
-            ax[1].set_title(f"Synth {imname2}, triline {in2 + 1}")
+            ax[1].set_title(f"Synth triline {in2 + 1}")
 
             matched_descriptors = np.append(matched_descriptors, np.append(np.expand_dims(np.expand_dims(in1+1, axis = 0), axis = 1), np.expand_dims(tri_descriptor_one[in1], axis = 0), axis = 1), axis = 0)
             matched_descriptors = np.append(matched_descriptors, np.append(np.expand_dims(np.expand_dims(in2+1, axis = 0), axis = 1), np.expand_dims(tri_descriptor_two[in2], axis = 0), axis = 1), axis = 0)
-        else:
+            matched_descriptors = np.append(matched_descriptors, [[e_d, 0, 0, 0, 0]], axis = 0)
 
-            for k in range(0, n_matches, 1):
-
-                (in1, in2) = descriptor_match_indices[k]
-                in1 = int(in1)
-                in2 = int(in2)
-
-                (po1, po2, po3, po4) = tri_lines_1[in1]
-
-                ax[k, 0].plot([po1[1], po2[1]], [po1[0], po2[0]], c='green', linewidth=2, zorder=4)
-                ax[k, 0].plot([po2[1], po3[1]], [po2[0], po3[0]], c='green', linewidth=2, zorder=4)
-                ax[k, 0].plot([po3[1], po4[1]], [po3[0], po4[0]], c='green', linewidth=2, zorder=4)
-                ax[k, 0].scatter(po1[1], po1[0], **PLTOPTS)
-                ax[k, 0].scatter(po2[1], po2[0], **PLTOPTS)
-                ax[k, 0].scatter(po3[1], po3[0], **PLTOPTS)
-                ax[k, 0].scatter(po4[1], po4[0], **PLTOPTS)
-
-                ax[k, 0].imshow(im1)
-                ax[k, 0].axis('off')
-                ax[k, 0].set_title(f"RGB {imname1}, triline {in1 + 1}")
-
-                (po1, po2, po3, po4) = tri_lines_2[in2]
-
-                ax[k, 1].plot([po1[1], po2[1]], [po1[0], po2[0]], c='green', linewidth=2, zorder=4)
-                ax[k, 1].plot([po2[1], po3[1]], [po2[0], po3[0]], c='green', linewidth=2, zorder=4)
-                ax[k, 1].plot([po3[1], po4[1]], [po3[0], po4[0]], c='green', linewidth=2, zorder=4)
-                ax[k, 1].scatter(po1[1], po1[0], **PLTOPTS)
-                ax[k, 1].scatter(po2[1], po2[0], **PLTOPTS)
-                ax[k, 1].scatter(po3[1], po3[0], **PLTOPTS)
-                ax[k, 1].scatter(po4[1], po4[0], **PLTOPTS)
-
-                ax[k, 1].imshow(im2)
-                ax[k, 1].axis('off')
-                ax[k, 1].set_title(f"Synth {imname2}, triline {in2 + 1}")
-
-                matched_descriptors = np.append(matched_descriptors, np.append(np.expand_dims(np.expand_dims(in1+1, axis = 0), axis = 1), np.expand_dims(tri_descriptor_one[in1], axis = 0), axis = 1), axis = 0)
-                matched_descriptors = np.append(matched_descriptors, np.append(np.expand_dims(np.expand_dims(in2+1, axis = 0), axis = 1), np.expand_dims(tri_descriptor_two[in2], axis = 0), axis = 1), axis = 0)
-
-        plt.savefig(os.path.join(dir_path, f"tri_line_matches_{imname1}_{imname2}.png"), bbox_inches='tight', dpi=300)
-        #plt.show()
-        plt.close()
-
+            plt.savefig(os.path.join(matches_path, f"RGB_triline_{in1+1}_Synthetic_triline_{in2+1}.png"), bbox_inches='tight', dpi=300)
+            #plt.subplot_tool()
+            #plt.tight_layout
+            plt.show()
+            plt.close()
+        
         indices1 = np.arange(1, len(tri_descriptor_one) + 1, 1)
         indices2 = np.arange(1, len(tri_descriptor_two) + 1, 1)
 
-        with open(os.path.join(dir_path, f"output_{imname1}_{imname2}.txt"), "w") as f:
+        with open(os.path.join(dir_path, f"output_{imname1}_{imname2}_{thr_conf_rgb}_{thr_conf_synt}_{eucl_thr}.txt"), "w") as f:
             f.write(f"Output of matching of images: RGB {imname1} and {imname2}\n")
+            f.write("\nParameters:\n")
+            f.write(f"\nSensitivity RGB: {thr_conf_rgb}\n")
+            f.write(f"Sensitivity synthetic: {thr_conf_synt}\n")
+            f.write(f"Distance between points threshold: {thr_dist} pixels\n")
+            f.write(f"Euclidean distance for a match: {eucl_thr}\n")
+            if normalisation:
+                f.write("Normalisation: Yes\n")
+            else:
+                f.write("Normalisation: No\n")
             f.write(f"\nExtracted descriptors of RGB {imname1}:\n")
             np.savetxt(f, np.append(np.transpose(np.expand_dims(indices1, axis = 0)), tri_descriptor_one, axis = 1), delimiter = ' ', fmt='%1.3f')
             f.write(f"\nExtracted descriptors of Synthetic {imname2}:\n")
             np.savetxt(f, np.append(np.transpose(np.expand_dims(indices2, axis = 0)), tri_descriptor_two, axis = 1), delimiter = ' ', fmt='%1.3f')
             f.write(f"\nMatched descritpor indices:\n")
-            np.savetxt(f, descriptor_match_indices + 1, delimiter = ' ', fmt='%i')
+            np.savetxt(f, descriptor_match_indices[:, [0, 1]] + 1, delimiter = ' ', fmt='%i')
             f.write(f"\nMatched descriptors:\n")
             np.savetxt(f, matched_descriptors, delimiter = ' ', fmt='%1.3f')
     else:
         print("No matches found!")
 
+        indices1 = np.arange(1, len(tri_descriptor_one) + 1, 1)
+        indices2 = np.arange(1, len(tri_descriptor_two) + 1, 1)
+
+        with open(os.path.join(dir_path, f"output_{imname1}_{imname2}_{thr_conf_rgb}_{thr_conf_synt}_{eucl_thr}.txt"), "w") as f:
+            f.write(f"Output of matching of images: RGB {imname1} and {imname2}\n")
+            f.write("\nParameters:\n")
+            f.write(f"\nSensitivity RGB: {thr_conf_rgb}\n")
+            f.write(f"Sensitivity synthetic: {thr_conf_synt}\n")
+            f.write(f"Distance between points threshold: {thr_dist} pixels\n")
+            f.write(f"Euclidean distance for a match: {eucl_thr}\n")
+            if normalisation:
+                f.write("Normalisation: Yes\n")
+            else:
+                f.write("Normalisation: No\n")
+            f.write(f"\nExtracted descriptors of RGB {imname1}:\n")
+            np.savetxt(f, np.append(np.transpose(np.expand_dims(indices1, axis = 0)), tri_descriptor_one, axis = 1), delimiter = ' ', fmt='%1.3f')
+            f.write(f"\nExtracted descriptors of Synthetic {imname2}:\n")
+            np.savetxt(f, np.append(np.transpose(np.expand_dims(indices2, axis = 0)), tri_descriptor_two, axis = 1), delimiter = ' ', fmt='%1.3f')
+
 if __name__ == "__main__":
     main()
+
+
+
+
+# if (n_matches == 1):
+#             (in1, in2, e_d) = descriptor_match_indices[0]
+#             in1 = int(in1)
+#             in2 = int(in2)
+
+#             (po1, po2, po3, po4) = tri_lines_1[in1]
+
+#             ax[0].plot([po1[1], po2[1]], [po1[0], po2[0]], c='green', linewidth=2, zorder=4)
+#             ax[0].plot([po2[1], po3[1]], [po2[0], po3[0]], c='green', linewidth=2, zorder=4)
+#             ax[0].plot([po3[1], po4[1]], [po3[0], po4[0]], c='green', linewidth=2, zorder=4)
+#             ax[0].scatter(po1[1], po1[0], **PLTOPTS)
+#             ax[0].scatter(po2[1], po2[0], **PLTOPTS)
+#             ax[0].scatter(po3[1], po3[0], **PLTOPTS)
+#             ax[0].scatter(po4[1], po4[0], **PLTOPTS)
+
+#             ax[0].imshow(im1)
+#             ax[0].axis('off')
+#             ax[0].set_title(f"RGB {imname1}, triline {in1 + 1}")
+
+#             (po1, po2, po3, po4) = tri_lines_2[in2]
+
+#             ax[1].plot([po1[1], po2[1]], [po1[0], po2[0]], c='green', linewidth=2, zorder=4)
+#             ax[1].plot([po2[1], po3[1]], [po2[0], po3[0]], c='green', linewidth=2, zorder=4)
+#             ax[1].plot([po3[1], po4[1]], [po3[0], po4[0]], c='green', linewidth=2, zorder=4)
+#             ax[1].scatter(po1[1], po1[0], **PLTOPTS)
+#             ax[1].scatter(po2[1], po2[0], **PLTOPTS)
+#             ax[1].scatter(po3[1], po3[0], **PLTOPTS)
+#             ax[1].scatter(po4[1], po4[0], **PLTOPTS)
+
+#             ax[1].imshow(im2)
+#             ax[1].axis('off')
+#             ax[1].set_title(f"Synth {imname2}, triline {in2 + 1}")
+
+#             matched_descriptors = np.append(matched_descriptors, np.append(np.expand_dims(np.expand_dims(in1+1, axis = 0), axis = 1), np.expand_dims(tri_descriptor_one[in1], axis = 0), axis = 1), axis = 0)
+#             matched_descriptors = np.append(matched_descriptors, np.append(np.expand_dims(np.expand_dims(in2+1, axis = 0), axis = 1), np.expand_dims(tri_descriptor_two[in2], axis = 0), axis = 1), axis = 0)
+#             matched_descriptors = np.append(matched_descriptors, [[e_d, 0, 0, 0, 0]], axis = 0)
+#         else:
+#             for k in range(0, n_matches, 1):
+
+#                 (in1, in2, e_d) = descriptor_match_indices[k]
+#                 in1 = int(in1)
+#                 in2 = int(in2)
+
+#                 (po1, po2, po3, po4) = tri_lines_1[in1]
+
+#                 ax[k, 0].plot([po1[1], po2[1]], [po1[0], po2[0]], c='green', linewidth=2, zorder=4)
+#                 ax[k, 0].plot([po2[1], po3[1]], [po2[0], po3[0]], c='green', linewidth=2, zorder=4)
+#                 ax[k, 0].plot([po3[1], po4[1]], [po3[0], po4[0]], c='green', linewidth=2, zorder=4)
+#                 ax[k, 0].scatter(po1[1], po1[0], **PLTOPTS)
+#                 ax[k, 0].scatter(po2[1], po2[0], **PLTOPTS)
+#                 ax[k, 0].scatter(po3[1], po3[0], **PLTOPTS)
+#                 ax[k, 0].scatter(po4[1], po4[0], **PLTOPTS)
+
+#                 ax[k, 0].imshow(im1)
+#                 ax[k, 0].axis('off')
+#                 ax[k, 0].set_title(f"RGB {imname1}, triline {in1 + 1}")
+
+#                 (po1, po2, po3, po4) = tri_lines_2[in2]
+
+#                 ax[k, 1].plot([po1[1], po2[1]], [po1[0], po2[0]], c='green', linewidth=2, zorder=4)
+#                 ax[k, 1].plot([po2[1], po3[1]], [po2[0], po3[0]], c='green', linewidth=2, zorder=4)
+#                 ax[k, 1].plot([po3[1], po4[1]], [po3[0], po4[0]], c='green', linewidth=2, zorder=4)
+#                 ax[k, 1].scatter(po1[1], po1[0], **PLTOPTS)
+#                 ax[k, 1].scatter(po2[1], po2[0], **PLTOPTS)
+#                 ax[k, 1].scatter(po3[1], po3[0], **PLTOPTS)
+#                 ax[k, 1].scatter(po4[1], po4[0], **PLTOPTS)
+
+#                 ax[k, 1].imshow(im2)
+#                 ax[k, 1].axis('off')
+#                 ax[k, 1].set_title(f"Synth {imname2}, triline {in2 + 1}")
+
+#                 matched_descriptors = np.append(matched_descriptors, np.append(np.expand_dims(np.expand_dims(in1+1, axis = 0), axis = 1), np.expand_dims(tri_descriptor_one[in1], axis = 0), axis = 1), axis = 0)
+#                 matched_descriptors = np.append(matched_descriptors, np.append(np.expand_dims(np.expand_dims(in2+1, axis = 0), axis = 1), np.expand_dims(tri_descriptor_two[in2], axis = 0), axis = 1), axis = 0)
+#                 matched_descriptors = np.append(matched_descriptors, [[e_d, 0, 0, 0, 0]], axis = 0)
